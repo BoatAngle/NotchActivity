@@ -12,6 +12,7 @@ import AppKit
 //   Settings.swift         preferences, open at login
 //   NowPlaying.swift       system-wide Now Playing, playback commands, artwork, demo tracks
 //   SystemMonitors.swift   charging / low battery, output device, mute, screen unlock
+//   FullScreen.swift       detects full-screen apps on the notched display
 //   CalendarMonitor.swift  next calendar event as a live activity
 //   ExternalAPI.swift      notchactivity:// URL scheme (used by the `notch` CLI and Shortcuts)
 //   Search.swift           app search + calculator

@@ -7,14 +7,14 @@ import SwiftUI
 @MainActor @Observable
 final class AppSettings {
     enum Key: String, CaseIterable {
-        case expandOnHover, haptics, trackPeek, onlineArtwork, hidePausedMusic
+        case expandOnHover, haptics, hideInFullScreen, trackPeek, onlineArtwork, hidePausedMusic
         case calendar
         case alertPower, alertAudio, alertMute, alertUnlock
         case hasOnboarded
     }
 
     static let defaults: [Key: Bool] = [
-        .expandOnHover: true, .haptics: true, .trackPeek: true, .onlineArtwork: true,
+        .expandOnHover: true, .haptics: true, .hideInFullScreen: true, .trackPeek: true, .onlineArtwork: true,
         .hidePausedMusic: true, .calendar: false,
         .alertPower: true, .alertAudio: true, .alertMute: true, .alertUnlock: true,
         .hasOnboarded: false,

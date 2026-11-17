@@ -13,6 +13,7 @@ struct SettingsView: View {
                     Text(error).font(.caption).foregroundStyle(.red)
                 }
                 Toggle("Open when the pointer rests on the notch", isOn: s.binding(.expandOnHover))
+                Toggle("Hide while an app is full screen", isOn: s.binding(.hideInFullScreen))
                 Toggle("Haptic feedback", isOn: s.binding(.haptics))
             }
 

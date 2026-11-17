@@ -71,6 +71,17 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
     private var reservedLength: CGFloat = -1
     private var reservationFits = true
     private var previewTimer: Timer?
+    private var obscurer = Obscurer.none
+    private var presentationObserver: NSKeyValueObservation?
+    private var coverCheckCountdown = 0
+    private var spaceCheckPhase = false
+
+    /// Why the island is currently out of the way (see FullScreen.swift).
+    private enum Obscurer: String {
+        case none
+        case fullScreenSpace = "full-screen Space"      // native full screen or Split View
+        case coveringWindow = "window covering the display"   // borderless full screen
+    }
 
     // MARK: Launch
 
@@ -91,6 +102,11 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
         let ws = NSWorkspace.shared.notificationCenter
         ws.addObserver(self, selector: #selector(screensChanged), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
         ws.addObserver(self, selector: #selector(screensChanged), name: NSWorkspace.didWakeNotification, object: nil)
+        // Full screen comes and goes with the frontmost app and with the menu bar being hidden.
+        ws.addObserver(self, selector: #selector(frontmostAppChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        presentationObserver = NSApp.observe(\.currentSystemPresentationOptions) { [weak self] _, _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.updateObscured() } }
+        }
 
         settings.onChange = { [weak self] key in self?.settingChanged(key) }
 
@@ -169,6 +185,8 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
                 // Leave the switch on if access was denied earlier, so Settings can explain why.
                 if on, !granted, self?.model.calendar.denied == false { self?.model.settings[.calendar] = false }
             }
+        case .hideInFullScreen:
+            updateObscured()
         default:
             break
         }
@@ -181,6 +199,61 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
         layoutForScreens()
     }
 
+    @objc func frontmostAppChanged() {
+        updateObscured()
+        // The new app's windows may still be animating into place.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            MainActor.assumeIsolated { self?.updateObscured() }
+        }
+    }
+
+    // MARK: Stepping aside for full screen
+
+    /// Works out whether something full screen has taken over the notched display, and gets
+    /// the island out of the way (or brings it back).
+    ///
+    /// The Space check is cheap and runs several times a second, so the island is gone before
+    /// a full-screen transition finishes. Listing windows costs more: `checkWindows` is false
+    /// on the fast path, which then only re-checks a covering window it already knows about.
+    func updateObscured(checkWindows: Bool = true) {
+        var new = Obscurer.none
+        if model.settings[.hideInFullScreen], model.hasNotch, !model.hiddenByUser {
+            let g = model.geometry
+            if FullScreenDetector.isFullScreenSpace(displayID: g.displayID, menuBarHeight: g.notchHeight) {
+                new = .fullScreenSpace
+            } else if checkWindows || obscurer == .coveringWindow,
+                      FullScreenDetector.frontmostAppCovers(displayID: g.displayID) {
+                new = .coveringWindow
+            }
+        }
+        guard new != obscurer else { return }
+        obscurer = new
+        model.obscured = new != .none
+        if new == .none {
+            islandLog.notice("Island showing again")
+        } else {
+            islandLog.notice("Island hidden: \(new.rawValue, privacy: .public)")
+        }
+
+        if model.obscured {
+            // Nothing queued should pop out when the island comes back.
+            alertQueue.removeAll()
+            dismissAlert()
+            enterWork?.cancel(); enterWork = nil
+            model.hovering = false
+            if model.searching { endSearch() }
+        }
+        applyPanelVisibility()
+    }
+
+    private func applyPanelVisibility() {
+        if !model.hasNotch || model.hiddenByUser || obscurer != .none {
+            panel.orderOut(nil)
+        } else {
+            panel.orderFrontRegardless()
+        }
+    }
+
     func layoutForScreens() {
         if let g = NotchGeometry.find() {
             model.geometry = g
@@ -188,13 +261,13 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
             let size = model.windowSize
             panel.setFrame(NSRect(x: (g.midX - size.width / 2).rounded(), y: g.top - size.height,
                                   width: size.width, height: size.height), display: true)
-            if model.hiddenByUser { panel.orderOut(nil) } else { panel.orderFrontRegardless() }
         } else {
             // No notched display (e.g. lid closed on an external): don't float an island
             // in the middle of a notch-less menu bar.
             model.hasNotch = false
-            panel.orderOut(nil)
         }
+        updateObscured()          // decide first, so the panel is never ordered in over full screen
+        applyPanelVisibility()
         updateStatusReservation(force: true)
     }
 
@@ -214,11 +287,20 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
         model.calendar.refresh(now: now)
         for (id, expiry) in customExpiry where now >= expiry { endCustomActivity(id) }
         updateStatusReservation()
+        // Backstop: a window can cover the screen without any notification firing.
+        coverCheckCountdown -= 1
+        if coverCheckCountdown <= 0 {
+            coverCheckCountdown = 2
+            updateObscured()
+        }
     }
 
     private func pointerTick() {
         updateHover()
         detectFileDrag()
+        // Every 0.2s: has the notched display gone into (or out of) a full-screen Space?
+        spaceCheckPhase.toggle()
+        if spaceCheckPhase { updateObscured(checkWindows: false) }
     }
 
     // MARK: Hover
@@ -358,7 +440,7 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
     // MARK: Search
 
     func beginSearch() {
-        guard model.hasNotch, !model.hiddenByUser else { return }
+        guard model.hasNotch, !model.hiddenByUser, !model.obscured else { return }
         model.search.reset()
         model.search.prepare()
         withAnimation(Island.morph) { model.searching = true }
@@ -462,7 +544,7 @@ final class NotchController: NSObject, NSApplicationDelegate, NSMenuDelegate, Is
     /// `force` bypasses the per-category switches in Settings (used for things the user asked for).
     func showAlert(_ alert: IslandAlert, force: Bool = false, if key: AppSettings.Key? = nil) {
         if let key, !force, !model.settings[key] { return }
-        guard model.hasNotch, !model.hiddenByUser, !model.searching, !model.welcoming else { return }
+        guard model.hasNotch, !model.hiddenByUser, !model.obscured, !model.searching, !model.welcoming else { return }
         alertQueue.append(alert)
         if model.alert == nil, alertWork == nil { showNextAlert() }
     }

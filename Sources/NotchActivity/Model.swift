@@ -8,7 +8,7 @@ enum Page: Hashable {
 
 /// What the island is doing right now (see `IslandModel.presentation` for the priority order).
 enum Presentation: Equatable {
-    case hidden     // no notched display, or the user hid it
+    case hidden     // no notched display, the user hid it, or something is full screen
     case idle       // nothing live: the island is just the notch
     case compact    // primary activity in the ears beside the notch
     case alert      // transient event (charging, AirPods, a new track...)
@@ -83,6 +83,8 @@ final class IslandModel {
     var geometry = NotchGeometry(notchWidth: 200, notchHeight: 32, midX: 0, top: 0)
     var hasNotch = false
     var hiddenByUser = false
+    /// Something full screen has taken over the notched display (see FullScreen.swift).
+    var obscured = false
 
     let settings = AppSettings()
     let music = MusicController()
@@ -139,7 +141,7 @@ final class IslandModel {
     }
 
     var presentation: Presentation {
-        if !hasNotch || hiddenByUser { return .hidden }
+        if !hasNotch || hiddenByUser || obscured { return .hidden }
         if dropTargeting { return .drop }
         if searching { return .search }
         if welcoming { return .welcome }

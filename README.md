@@ -20,6 +20,8 @@ The notch turns into a black island that shows what's happening: the song that's
 
 Hover to open, click to open instantly, swipe with two fingers to move between activities, right-click for everything else.
 
+When an app goes full screen on the notched display, such as a video, a game, or a slideshow, the island disappears until you come back.
+
 ## Install
 
 You need a MacBook with a notch, macOS 14 or later, and the Xcode Command Line Tools (`xcode-select --install`).
@@ -95,7 +97,7 @@ Activities also accept `subtitle`, `tint`, `url` (an http or https link, shown a
 
 Right-click the island or use the menu bar icon, then choose **Settings…**
 
-- **General:** open at login, open on hover (turn it off to open on click only), haptics.
+- **General:** open at login, open on hover (turn it off to open on click only), hiding while an app is full screen, haptics.
 - **Now Playing:** any app or built-in demo tracks, track previews, hiding a paused track after ten minutes, online artwork.
 - **Calendar:** upcoming events. macOS asks for calendar access when you switch this on.
 - **Alerts:** each kind can be turned off.
@@ -119,6 +121,7 @@ Sources/NotchActivity/
   Model.swift            presentation state machine, pages, timer
   NowPlaying.swift       system-wide Now Playing, commands, artwork, demo tracks
   SystemMonitors.swift   battery, audio output, mute, screen unlock
+  FullScreen.swift       notices full-screen apps so the island can step aside
   CalendarMonitor.swift  next calendar event
   ExternalAPI.swift      the notchactivity:// URL scheme
   Search.swift           app search and calculator

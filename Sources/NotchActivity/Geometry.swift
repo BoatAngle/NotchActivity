@@ -7,6 +7,7 @@ struct NotchGeometry: Equatable {
     var notchHeight: CGFloat
     var midX: CGFloat
     var top: CGFloat
+    var displayID: CGDirectDisplayID = 0
 
     var notchLeft: CGFloat { midX - notchWidth / 2 }
     var notchRight: CGFloat { midX + notchWidth / 2 }
@@ -19,9 +20,11 @@ struct NotchGeometry: Equatable {
                   let right = screen.auxiliaryTopRightArea else { continue }
             let width = screen.frame.width - left.width - right.width
             guard width > 0 else { continue }
+            let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
             return NotchGeometry(notchWidth: width, notchHeight: height,
                                  midX: screen.frame.minX + left.width + width / 2,
-                                 top: screen.frame.maxY)
+                                 top: screen.frame.maxY,
+                                 displayID: number?.uint32Value ?? 0)
         }
         return nil
     }
